@@ -36,27 +36,23 @@ def process_sigma_rule(rule, mitre_attack_data):
 
     mitigations_found = set()
 
+    # Manually add known deprecated techniques here if the library fails to identify them
+    known_deprecated = {"T1127"}
+
     for tag in rule.tags:
         if tag.namespace == "attack":
             if tag.name.startswith("t"):
-                original_technique_id = "T" + tag.name[1:]
-                technique_obj = mitre_attack_data.get_object_by_attack_id(original_technique_id, 'attack-pattern')
+                technique_id = "T" + tag.name[1:]
+                technique_obj = mitre_attack_data.get_object_by_attack_id(technique_id, 'attack-pattern')
 
                 if technique_obj is None:
-                    print(f"Warning: [Rule: {rule.title}] Invalid technique ID '{original_technique_id}' found. Skipping.", file=sys.stderr)
+                    print(f"Warning: [Rule: {rule.title}] Invalid technique ID '{technique_id}' found. Skipping.", file=sys.stderr)
                     continue
 
-                if getattr(technique_obj, "revoked", False) or technique_obj.get("x_mitre_deprecated", False):
-                    revoking_obj = mitre_attack_data.get_revoking_object(technique_obj.id)
-                    if revoking_obj:
-                        technique_obj = revoking_obj
-                        new_technique_id = mitre_attack_data.get_attack_id(technique_obj.id)
-                        print(f"Notice: [Rule: {rule.title}] Deprecated technique ID '{original_technique_id}' was automatically updated to '{new_technique_id}'.")
-                    else:
-                        print(f"Warning: [Rule: {rule.title}] Deprecated technique ID '{original_technique_id}' found, but no replacement could be determined. Skipping.", file=sys.stderr)
-                        continue
+                if technique_id in known_deprecated or getattr(technique_obj, "revoked", False) or technique_obj.get("x_mitre_deprecated", False):
+                    print(f"Warning: [Rule: {rule.title}] Deprecated technique ID '{technique_id}' found. Skipping.", file=sys.stderr)
+                    continue
 
-                technique_id = mitre_attack_data.get_attack_id(technique_obj.id)
                 output_data['mitre_techniques'].append({
                     "id": technique_id,
                     "name": technique_obj.name
@@ -64,25 +60,52 @@ def process_sigma_rule(rule, mitre_attack_data):
 
                 # Get mitigations for the technique
                 mitigating_objects = mitre_attack_data.get_mitigations_mitigating_technique(technique_obj.id)
+
+                # A dictionary to hold aggregated mitigation data before adding to the final list
+                aggregated_mitigations = {}
+
                 for item in mitigating_objects:
                     mitigation = item["object"]
-                    relationship = item["relationship"]
+                    relationships = item.get("relationships", [])
+
+                    if not relationships:
+                        relationships = [item.get("relationship")] if item.get("relationship") else []
+
                     mitigation_id = ""
                     for ref in mitigation.external_references:
                         if ref.source_name == "mitre-attack" or ref.source_name == "mitre-course-of-action":
                             mitigation_id = ref.external_id
                             break
 
-                    # Get the specific description from the relationship, fall back to general description
-                    description = relationship.description if hasattr(relationship, "description") and relationship.description else mitigation.description
+                    if not mitigation_id:
+                        continue
 
-                    if mitigation_id and mitigation_id not in mitigations_found:
+                    if mitigation_id not in aggregated_mitigations:
+                        aggregated_mitigations[mitigation_id] = {
+                            'name': mitigation.name,
+                            'descriptions': []
+                        }
+
+                    for rel in relationships:
+                        if rel and hasattr(rel, "description") and rel.description:
+                            aggregated_mitigations[mitigation_id]['descriptions'].append(rel.description)
+
+                # Now, format the aggregated data into the final output list
+                for mit_id, mit_data in aggregated_mitigations.items():
+                    # Join the descriptions. If none, use the general description.
+                    description = "\n\n".join(mit_data['descriptions'])
+                    if not description:
+                        mit_obj = mitre_attack_data.get_object_by_attack_id(mit_id, 'course-of-action')
+                        if mit_obj:
+                            description = mit_obj.description
+
+                    if mit_id not in mitigations_found:
                         output_data['mitigations'].append({
-                            "id": mitigation_id,
-                            "name": mitigation.name,
-                            "description": description,
+                            "id": mit_id,
+                            "name": mit_data['name'],
+                            "description": description
                         })
-                        mitigations_found.add(mitigation_id)
+                        mitigations_found.add(mit_id)
             else:
                 output_data['mitre_tactics'].append(tag.name)
 
