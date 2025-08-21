@@ -149,3 +149,23 @@ class DuplicateTargetFilenameTransformation(DetectionItemTransformation):
                 item_linking=ConditionOR,
             )
         return detection_item
+
+class DuplicateChangeTransformation(DetectionItemTransformation):
+    """
+    Duplicates the CHANGES field into an ObjectName field.
+    """
+
+    def apply_detection_item(self, detection_item: SigmaDetectionItem) -> SigmaDetectionItem:
+        if detection_item.field == "CHANGES":
+            return SigmaDetection(
+                detection_items=[
+                    detection_item,
+                    SigmaDetectionItem(
+                        "INFORMATION",
+                        detection_item.modifiers,
+                        value=detection_item.value,
+                    ),
+                ],
+                item_linking=ConditionOR,
+            )
+        return detection_item
