@@ -18,7 +18,7 @@ from sigma.processing.transformations import FieldMappingTransformation, DropDet
 from sigma.processing.conditions import IncludeFieldCondition
 from sigma.processing.conditions.custom import LogsourceCategoryStartsWithCondition
 from sigma.processing.transformations import FieldMappingTransformation
-from sigma.processing.transformations.interim import TargetObjectTransformation, DuplicateTargetFilenameTransformation
+from sigma.processing.transformations.interim import DuplicateChangeTransformation, TargetObjectTransformation, DuplicateTargetFilenameTransformation
 from sigma.types import (
     SigmaCompareExpression,
     SigmaString,
@@ -62,7 +62,8 @@ class SiemBackend(TextQueryBackend):
         "CurrentDirectory": "CWD",
         "GrantedAccess": "ACCESSRIGHT",
         "TargetImage": "PROCESSNAME",
-        "Company": "COMPANY_NAME"
+        "Company": "COMPANY_NAME",
+        "EventType": "ACCESSES"
     }
 
     backend_processing_pipeline: ClassVar[ProcessingPipeline] = ProcessingPipeline(
@@ -87,6 +88,12 @@ class SiemBackend(TextQueryBackend):
                 transformation=DuplicateTargetFilenameTransformation(),
                 rule_conditions=[
                     LogsourceCategoryStartsWithCondition(prefix="file_")
+                ]
+            ),
+            ProcessingItem(
+                transformation=DuplicateChangeTransformation(),
+                rule_conditions=[
+                    LogsourceCategoryStartsWithCondition(prefix="registry")
                 ]
             )
         ]
