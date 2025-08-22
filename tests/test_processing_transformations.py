@@ -2580,13 +2580,11 @@ def test_duplicate_change_transformation(dummy_pipeline):
     assert len(result.detection_items) == 2
     assert result.item_linking == ConditionOR
 
-    # Check INFORMATN item
     informatn_item = result.detection_items[0]
     assert isinstance(informatn_item, SigmaDetectionItem)
     assert informatn_item.field == "INFORMATN"
-    assert informatn_item.value[0] == SigmaString("DWORD (0x00000001)")
+    assert informatn_item.value == [SigmaString("DWORD (0x00000001)")]
 
-    # Check nested CHANGES and NEWTYPE item
     nested_detection = result.detection_items[1]
     assert isinstance(nested_detection, SigmaDetection)
     assert len(nested_detection.detection_items) == 2
@@ -2595,12 +2593,12 @@ def test_duplicate_change_transformation(dummy_pipeline):
     changes_item = nested_detection.detection_items[0]
     assert isinstance(changes_item, SigmaDetectionItem)
     assert changes_item.field == "CHANGES"
-    assert changes_item.value[0] == SigmaNumber(1)
+    assert changes_item.value == [SigmaNumber(1)]
 
     newtype_item = nested_detection.detection_items[1]
     assert isinstance(newtype_item, SigmaDetectionItem)
     assert newtype_item.field == "NEWTYPE"
-    assert newtype_item.value[0] == SigmaString("REG_DWORD")
+    assert newtype_item.value == [SigmaString("REG_DWORD")]
 
 
 def test_duplicate_change_transformation_multiple_values(dummy_pipeline):
@@ -2617,37 +2615,31 @@ def test_duplicate_change_transformation_multiple_values(dummy_pipeline):
     assert len(result.detection_items) == 2
     assert result.item_linking == ConditionOR
 
-    # Check first transformed item
-    first_transformed = result.detection_items[0]
-    assert isinstance(first_transformed, SigmaDetection)
-    assert len(first_transformed.detection_items) == 2
-    assert first_transformed.item_linking == ConditionOR
+    informatn_item = result.detection_items[0]
+    assert isinstance(informatn_item, SigmaDetectionItem)
+    assert informatn_item.field == "INFORMATN"
+    assert informatn_item.value == [
+        SigmaString("DWORD (0x00000001)"),
+        SigmaString("DWORD (0x00000002)"),
+    ]
 
-    informatn_item1 = first_transformed.detection_items[0]
-    assert informatn_item1.field == "INFORMATN"
-    assert informatn_item1.value[0] == SigmaString("DWORD (0x00000001)")
+    nested_detection = result.detection_items[1]
+    assert isinstance(nested_detection, SigmaDetection)
+    assert len(nested_detection.detection_items) == 2
+    assert nested_detection.item_linking == ConditionAND
 
-    nested1 = first_transformed.detection_items[1]
-    assert nested1.detection_items[0].field == "CHANGES"
-    assert nested1.detection_items[0].value[0] == SigmaNumber(1)
-    assert nested1.detection_items[1].field == "NEWTYPE"
-    assert nested1.detection_items[1].value[0] == SigmaString("REG_DWORD")
+    changes_item = nested_detection.detection_items[0]
+    assert isinstance(changes_item, SigmaDetectionItem)
+    assert changes_item.field == "CHANGES"
+    assert changes_item.value == [SigmaNumber(1), SigmaNumber(2)]
 
-    # Check second transformed item
-    second_transformed = result.detection_items[1]
-    assert isinstance(second_transformed, SigmaDetection)
-    assert len(second_transformed.detection_items) == 2
-    assert second_transformed.item_linking == ConditionOR
-
-    informatn_item2 = second_transformed.detection_items[0]
-    assert informatn_item2.field == "INFORMATN"
-    assert informatn_item2.value[0] == SigmaString("DWORD (0x00000002)")
-
-    nested2 = second_transformed.detection_items[1]
-    assert nested2.detection_items[0].field == "CHANGES"
-    assert nested2.detection_items[0].value[0] == SigmaNumber(2)
-    assert nested2.detection_items[1].field == "NEWTYPE"
-    assert nested2.detection_items[1].value[0] == SigmaString("REG_DWORD")
+    newtype_item = nested_detection.detection_items[1]
+    assert isinstance(newtype_item, SigmaDetectionItem)
+    assert newtype_item.field == "NEWTYPE"
+    assert newtype_item.value == [
+        SigmaString("REG_DWORD"),
+        SigmaString("REG_DWORD"),
+    ]
 
 
 def test_duplicate_change_transformation_no_match(dummy_pipeline):

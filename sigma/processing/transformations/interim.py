@@ -158,11 +158,11 @@ class DuplicateChangeTransformation(DetectionItemTransformation):
 
     Example:
         Input:
-            Details: 'DWORD (0x00000001)'
+            Details: ['DWORD (0x00000001)', 'DWORD (0x00000002)']
         Output:
             (
-                INFORMATN: 'DWORD (0x00000001)' OR
-                (CHANGES: 1 AND NEWTYPE: 'REG_DWORD')
+                INFORMATN: ['DWORD (0x00000001)', 'DWORD (0x00000002)'] OR
+                (CHANGES: [1, 2] AND NEWTYPE: ['REG_DWORD', 'REG_DWORD'])
             )
     """
 
@@ -175,75 +175,66 @@ class DuplicateChangeTransformation(DetectionItemTransformation):
         else:
             values = detection_item.value
 
-        or_items = []
+        changes_values = []
+        newtype_values = []
+        informatn_values = []
+        can_transform_all = True
+
+        type_mapping = {
+            "DWORD": "REG_DWORD",
+            "BINARY": "REG_BINARY",
+            "DWORD_LITTLE_ENDIAN": "REG_DWORD_LITTLE_ENDIAN",
+            "DWORD_BIG_ENDIAN": "REG_DWORD_BIG_ENDIAN",
+            "EXPAND_SZ": "REG_EXPAND_SZ",
+            "LINK": "REG_LINK",
+            "MULTI_SZ": "REG_MULTI_SZ",
+            "NONE": "REG_NONE",
+            "QWORD": "REG_QWORD",
+            "QWORD_LITTLE_ENDIAN": "REG_QWORD_LITTLE_ENDIAN",
+            "SZ": "REG_SZ",
+        }
+
         for v in values:
             if not isinstance(v, SigmaString):
-                or_items.append(
-                    SigmaDetectionItem(
-                        "INFORMATN", detection_item.modifiers, value=[v]
-                    )
-                )
-                continue
+                can_transform_all = False
+                break
 
             s_value = str(v)
             match = re.match(r"(\w+)\s+\((0x[0-9a-fA-F]+)\)", s_value)
 
             if not match:
-                or_items.append(
-                    SigmaDetectionItem(
-                        "INFORMATN", detection_item.modifiers, value=[v]
-                    )
-                )
-                continue
+                can_transform_all = False
+                break
 
             reg_type, hex_value = match.groups()
             dec_value = int(hex_value, 16)
-
-            type_mapping = {
-                "DWORD": "REG_DWORD",
-                "BINARY": "REG_BINARY",
-                "DWORD_LITTLE_ENDIAN": "REG_DWORD_LITTLE_ENDIAN",
-                "DWORD_BIG_ENDIAN": "REG_DWORD_BIG_ENDIAN",
-                "EXPAND_SZ": "REG_EXPAND_SZ",
-                "LINK": "REG_LINK",
-                "MULTI_SZ": "REG_MULTI_SZ",
-                "NONE": "REG_NONE",
-                "QWORD": "REG_QWORD",
-                "QWORD_LITTLE_ENDIAN": "REG_QWORD_LITTLE_ENDIAN",
-                "SZ": "REG_SZ",
-            }
             new_type = type_mapping.get(reg_type.upper())
 
             if not new_type:
-                or_items.append(
-                    SigmaDetectionItem(
-                        "INFORMATN", detection_item.modifiers, value=[v]
-                    )
-                )
-                continue
+                can_transform_all = False
+                break
 
-            single_transformed = SigmaDetection(
-                detection_items=[
-                    SigmaDetectionItem(
-                        "INFORMATN", detection_item.modifiers, value=[v]
-                    ),
-                    SigmaDetection(
-                        detection_items=[
-                            SigmaDetectionItem(
-                                "CHANGES", [], value=[SigmaNumber(dec_value)]
-                            ),
-                            SigmaDetectionItem(
-                                "NEWTYPE", [], value=[SigmaString(new_type)]
-                            ),
-                        ],
-                        item_linking=ConditionAND,
-                    ),
-                ],
-                item_linking=ConditionOR,
+            changes_values.append(SigmaNumber(dec_value))
+            newtype_values.append(SigmaString(new_type))
+            informatn_values.append(v)
+
+        if not can_transform_all or not changes_values:
+            return SigmaDetectionItem(
+                "INFORMATN", detection_item.modifiers, value=detection_item.value
             )
-            or_items.append(single_transformed)
 
-        if len(or_items) == 1:
-            return or_items[0]
-        else:
-            return SigmaDetection(detection_items=or_items, item_linking=ConditionOR)
+        return SigmaDetection(
+            detection_items=[
+                SigmaDetectionItem(
+                    "INFORMATN", detection_item.modifiers, value=informatn_values
+                ),
+                SigmaDetection(
+                    detection_items=[
+                        SigmaDetectionItem("CHANGES", [], value=changes_values),
+                        SigmaDetectionItem("NEWTYPE", [], value=newtype_values),
+                    ],
+                    item_linking=ConditionAND,
+                ),
+            ],
+            item_linking=ConditionOR,
+        )
