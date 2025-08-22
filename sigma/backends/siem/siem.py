@@ -82,9 +82,6 @@ class SiemBackend(TextQueryBackend):
                 field_name_conditions=[IncludeFieldCondition(fields=["EventID"])]
             ),
             ProcessingItem(
-                transformation=FieldMappingTransformation(field_mappings)
-            ),
-            ProcessingItem(
                 transformation=DuplicateTargetFilenameTransformation(),
                 rule_conditions=[
                     LogsourceCategoryStartsWithCondition(prefix="file_")
@@ -95,6 +92,9 @@ class SiemBackend(TextQueryBackend):
                 rule_conditions=[
                     LogsourceCategoryStartsWithCondition(prefix="registry")
                 ]
+            ),
+            ProcessingItem(
+                transformation=FieldMappingTransformation(field_mappings)
             )
         ]
     )

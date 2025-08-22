@@ -156,7 +156,7 @@ class DuplicateChangeTransformation(DetectionItemTransformation):
     """
 
     def apply_detection_item(self, detection_item: SigmaDetectionItem) -> SigmaDetectionItem:
-        if detection_item.field == "CHANGES":
+        if detection_item.field == "Details":
             return SigmaDetection(
                 detection_items=[
                     detection_item,
