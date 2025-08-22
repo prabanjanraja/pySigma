@@ -37,7 +37,9 @@ from sigma.processing.transformations import (
     __all__ as transformations_all,
     StrictFieldMappingFailure,
 )
+from sigma.processing.transformations.interim import DuplicateChangeTransformation
 from sigma.processing.transformations.base import ConditionTransformation
+from sigma.conditions import ConditionAND, ConditionOR
 from sigma.rule.detection import SigmaDetection, SigmaDetectionItem
 from sigma.rule.logsource import SigmaLogSource
 from sigma.rule.rule import SigmaRule
@@ -2566,3 +2568,82 @@ def test_strict_mapped_fields_correlation_rule(dummy_pipeline, sigma_correlation
     transformation = StrictFieldMappingFailure()
     transformation.set_pipeline(dummy_pipeline)
     transformation.apply(sigma_correlation_rule)
+
+
+def test_duplicate_change_transformation(dummy_pipeline):
+    transformation = DuplicateChangeTransformation()
+    transformation.set_pipeline(dummy_pipeline)
+    detection_item = SigmaDetectionItem("Details", [], [SigmaString("DWORD (0x00000001)")])
+    result = transformation.apply_detection_item(detection_item)
+
+    assert isinstance(result, SigmaDetection)
+    assert len(result.detection_items) == 2
+    assert result.item_linking == ConditionOR
+
+    # Check INFORMATN item
+    informatn_item = result.detection_items[0]
+    assert isinstance(informatn_item, SigmaDetectionItem)
+    assert informatn_item.field == "INFORMATN"
+    assert informatn_item.value[0] == SigmaString("DWORD (0x00000001)")
+
+    # Check nested CHANGES and NEWTYPE item
+    nested_detection = result.detection_items[1]
+    assert isinstance(nested_detection, SigmaDetection)
+    assert len(nested_detection.detection_items) == 2
+    assert nested_detection.item_linking == ConditionAND
+
+    changes_item = nested_detection.detection_items[0]
+    assert isinstance(changes_item, SigmaDetectionItem)
+    assert changes_item.field == "CHANGES"
+    assert changes_item.value[0] == SigmaNumber(1)
+
+    newtype_item = nested_detection.detection_items[1]
+    assert isinstance(newtype_item, SigmaDetectionItem)
+    assert newtype_item.field == "NEWTYPE"
+    assert newtype_item.value[0] == SigmaString("REG_DWORD")
+
+
+def test_duplicate_change_transformation_no_match(dummy_pipeline):
+    transformation = DuplicateChangeTransformation()
+    transformation.set_pipeline(dummy_pipeline)
+    detection_item = SigmaDetectionItem("Details", [], [SigmaString("some other value")])
+    result = transformation.apply_detection_item(detection_item)
+
+    assert isinstance(result, SigmaDetection)
+    assert len(result.detection_items) == 2
+    assert result.item_linking == ConditionOR
+
+    # Check original item
+    original_item = result.detection_items[0]
+    assert isinstance(original_item, SigmaDetectionItem)
+    assert original_item.field == "Details"
+    assert original_item.value[0] == SigmaString("some other value")
+
+    # Check INFORMATN item
+    informatn_item = result.detection_items[1]
+    assert isinstance(informatn_item, SigmaDetectionItem)
+    assert informatn_item.field == "INFORMATN"
+    assert informatn_item.value[0] == SigmaString("some other value")
+
+
+def test_duplicate_change_transformation_no_mapping(dummy_pipeline):
+    transformation = DuplicateChangeTransformation()
+    transformation.set_pipeline(dummy_pipeline)
+    detection_item = SigmaDetectionItem("Details", [], [SigmaString("UNKNOWN (0x123)")])
+    result = transformation.apply_detection_item(detection_item)
+
+    assert isinstance(result, SigmaDetection)
+    assert len(result.detection_items) == 2
+    assert result.item_linking == ConditionOR
+
+    # Check original item
+    original_item = result.detection_items[0]
+    assert isinstance(original_item, SigmaDetectionItem)
+    assert original_item.field == "Details"
+    assert original_item.value[0] == SigmaString("UNKNOWN (0x123)")
+
+    # Check INFORMATN item
+    informatn_item = result.detection_items[1]
+    assert isinstance(informatn_item, SigmaDetectionItem)
+    assert informatn_item.field == "INFORMATN"
+    assert informatn_item.value[0] == SigmaString("UNKNOWN (0x123)")
