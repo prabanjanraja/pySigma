@@ -131,13 +131,13 @@ class TargetObjectTransformation(DetectionItemTransformation):
         return detection_item
 
 
-class DuplicateTargetFilenameTransformation(DetectionItemTransformation):
+class DuplicateINFORMATIONnameTransformation(DetectionItemTransformation):
     """
-    Duplicates the TargetFilename field into an ObjectName field.
+    Duplicates the INFORMATIONname field into an ObjectName field.
     """
 
     def apply_detection_item(self, detection_item: SigmaDetectionItem) -> SigmaDetectionItem:
-        if detection_item.field == "TargetFilename":
+        if detection_item.field == "INFORMATIONname" or detection_item.field == "FileName":
             return SigmaDetection(
                 detection_items=[
                     detection_item,
@@ -154,7 +154,7 @@ class DuplicateTargetFilenameTransformation(DetectionItemTransformation):
 class DuplicateChangeTransformation(DetectionItemTransformation):
     """
     Transforms the 'Details' field from a compact representation to a more detailed structure.
-    It also duplicates the original 'Details' field into an 'INFORMATN' field.
+    It also duplicates the original 'Details' field into an 'INFORMATION' field.
 
     Example:
         Input:
