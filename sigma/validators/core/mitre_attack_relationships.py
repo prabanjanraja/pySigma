@@ -58,7 +58,7 @@ class MITREATTACKTechniqueTacticRelationshipValidator(SigmaRuleValidator):
         :param require_technique_tactic_pairs: If True, require that every technique has a 
                corresponding tactic and vice versa. If False, only validate relationships 
                when both are present.
-        """
+        """ 
         self.require_technique_tactic_pairs = require_technique_tactic_pairs
 
     def validate(self, rule: Union[SigmaRule, SigmaCorrelationRule]) -> List[SigmaValidationIssue]:
