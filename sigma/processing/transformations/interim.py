@@ -1,7 +1,8 @@
+import re
 from sigma.processing.transformations.base import DetectionItemTransformation
 from sigma.rule import SigmaDetection, SigmaDetectionItem
 from sigma.conditions import ConditionAND, ConditionOR
-from sigma.types import SigmaString
+from sigma.types import SigmaString, SigmaNumber
 from sigma.modifiers import (
     SigmaContainsModifier,
     SigmaStartswithModifier,
@@ -152,20 +153,99 @@ class DuplicateTargetFilenameTransformation(DetectionItemTransformation):
 
 class DuplicateChangeTransformation(DetectionItemTransformation):
     """
-    Duplicates the CHANGES field into an ObjectName field.
+    Transforms the 'Details' field from a compact representation to a more detailed structure.
+    It also duplicates the original 'Details' field into an 'INFORMATN' field.
+
+    Example:
+        Input:
+            Details: 'DWORD (0x00000001)'
+        Output:
+            (
+                Details: 'DWORD (0x00000001)' OR
+                INFORMATN: 'DWORD (0x00000001)' OR
+                (CHANGES: 1 AND NEWTYPE: 'REG_DWORD')
+            )
     """
 
     def apply_detection_item(self, detection_item: SigmaDetectionItem) -> SigmaDetectionItem:
-        if detection_item.field == "Details":
+        if detection_item.field != "Details":
+            return detection_item
+
+        if not detection_item.value or not isinstance(detection_item.value[0], SigmaString):
+            # Just duplicate to INFORMATN if value is not a string
             return SigmaDetection(
                 detection_items=[
                     detection_item,
                     SigmaDetectionItem(
-                        "INFORMATION",
+                        "INFORMATN",
                         detection_item.modifiers,
                         value=detection_item.value,
                     ),
                 ],
                 item_linking=ConditionOR,
             )
-        return detection_item
+
+        original_value = detection_item.value[0]
+        s_value = str(original_value)
+
+        # Regex to capture the type and the hex value
+        match = re.match(r"(\w+)\s+\((0x[0-9a-fA-F]+)\)", s_value)
+
+        # Fallback to old behavior
+        fallback = SigmaDetection(
+            detection_items=[
+                detection_item,
+                SigmaDetectionItem(
+                    "INFORMATN",
+                    detection_item.modifiers,
+                    value=detection_item.value,
+                ),
+            ],
+            item_linking=ConditionOR,
+        )
+
+        if not match:
+            return fallback
+
+        reg_type, hex_value = match.groups()
+        dec_value = int(hex_value, 16)
+
+        type_mapping = {
+            "DWORD": "REG_DWORD",
+            "BINARY": "REG_BINARY",
+            "DWORD_LITTLE_ENDIAN": "REG_DWORD_LITTLE_ENDIAN",
+            "DWORD_BIG_ENDIAN": "REG_DWORD_BIG_ENDIAN",
+            "EXPAND_SZ": "REG_EXPAND_SZ",
+            "LINK": "REG_LINK",
+            "MULTI_SZ": "REG_MULTI_SZ",
+            "NONE": "REG_NONE",
+            "QWORD": "REG_QWORD",
+            "QWORD_LITTLE_ENDIAN": "REG_QWORD_LITTLE_ENDIAN",
+            "SZ": "REG_SZ",
+        }
+        new_type = type_mapping.get(reg_type.upper())
+
+        if not new_type:
+            return fallback
+
+        # Create the new complex detection
+        new_detection = SigmaDetection(
+            detection_items=[
+                SigmaDetectionItem("CHANGES", [], value=[SigmaNumber(dec_value)]),
+                SigmaDetectionItem("NEWTYPE", [], value=[SigmaString(new_type)]),
+            ],
+            item_linking=ConditionAND,
+        )
+
+        # The final structure includes the INFORMATN, and the new structure.
+        return SigmaDetection(
+            detection_items=[
+                SigmaDetectionItem(
+                    "INFORMATN",
+                    detection_item.modifiers,
+                    value=detection_item.value,
+                ),
+                new_detection,
+            ],
+            item_linking=ConditionOR,
+        )
