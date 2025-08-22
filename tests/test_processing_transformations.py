@@ -2603,27 +2603,62 @@ def test_duplicate_change_transformation(dummy_pipeline):
     assert newtype_item.value[0] == SigmaString("REG_DWORD")
 
 
-def test_duplicate_change_transformation_no_match(dummy_pipeline):
+def test_duplicate_change_transformation_multiple_values(dummy_pipeline):
     transformation = DuplicateChangeTransformation()
     transformation.set_pipeline(dummy_pipeline)
-    detection_item = SigmaDetectionItem("Details", [], [SigmaString("some other value")])
+    detection_item = SigmaDetectionItem(
+        "Details",
+        [],
+        [SigmaString("DWORD (0x00000001)"), SigmaString("DWORD (0x00000002)")],
+    )
     result = transformation.apply_detection_item(detection_item)
 
     assert isinstance(result, SigmaDetection)
     assert len(result.detection_items) == 2
     assert result.item_linking == ConditionOR
 
-    # Check original item
-    original_item = result.detection_items[0]
-    assert isinstance(original_item, SigmaDetectionItem)
-    assert original_item.field == "Details"
-    assert original_item.value[0] == SigmaString("some other value")
+    # Check first transformed item
+    first_transformed = result.detection_items[0]
+    assert isinstance(first_transformed, SigmaDetection)
+    assert len(first_transformed.detection_items) == 2
+    assert first_transformed.item_linking == ConditionOR
 
-    # Check INFORMATN item
-    informatn_item = result.detection_items[1]
-    assert isinstance(informatn_item, SigmaDetectionItem)
-    assert informatn_item.field == "INFORMATN"
-    assert informatn_item.value[0] == SigmaString("some other value")
+    informatn_item1 = first_transformed.detection_items[0]
+    assert informatn_item1.field == "INFORMATN"
+    assert informatn_item1.value[0] == SigmaString("DWORD (0x00000001)")
+
+    nested1 = first_transformed.detection_items[1]
+    assert nested1.detection_items[0].field == "CHANGES"
+    assert nested1.detection_items[0].value[0] == SigmaNumber(1)
+    assert nested1.detection_items[1].field == "NEWTYPE"
+    assert nested1.detection_items[1].value[0] == SigmaString("REG_DWORD")
+
+    # Check second transformed item
+    second_transformed = result.detection_items[1]
+    assert isinstance(second_transformed, SigmaDetection)
+    assert len(second_transformed.detection_items) == 2
+    assert second_transformed.item_linking == ConditionOR
+
+    informatn_item2 = second_transformed.detection_items[0]
+    assert informatn_item2.field == "INFORMATN"
+    assert informatn_item2.value[0] == SigmaString("DWORD (0x00000002)")
+
+    nested2 = second_transformed.detection_items[1]
+    assert nested2.detection_items[0].field == "CHANGES"
+    assert nested2.detection_items[0].value[0] == SigmaNumber(2)
+    assert nested2.detection_items[1].field == "NEWTYPE"
+    assert nested2.detection_items[1].value[0] == SigmaString("REG_DWORD")
+
+
+def test_duplicate_change_transformation_no_match(dummy_pipeline):
+    transformation = DuplicateChangeTransformation()
+    transformation.set_pipeline(dummy_pipeline)
+    detection_item = SigmaDetectionItem("Details", [], [SigmaString("some other value")])
+    result = transformation.apply_detection_item(detection_item)
+
+    assert isinstance(result, SigmaDetectionItem)
+    assert result.field == "INFORMATN"
+    assert result.value[0] == SigmaString("some other value")
 
 
 def test_duplicate_change_transformation_no_mapping(dummy_pipeline):
@@ -2632,18 +2667,6 @@ def test_duplicate_change_transformation_no_mapping(dummy_pipeline):
     detection_item = SigmaDetectionItem("Details", [], [SigmaString("UNKNOWN (0x123)")])
     result = transformation.apply_detection_item(detection_item)
 
-    assert isinstance(result, SigmaDetection)
-    assert len(result.detection_items) == 2
-    assert result.item_linking == ConditionOR
-
-    # Check original item
-    original_item = result.detection_items[0]
-    assert isinstance(original_item, SigmaDetectionItem)
-    assert original_item.field == "Details"
-    assert original_item.value[0] == SigmaString("UNKNOWN (0x123)")
-
-    # Check INFORMATN item
-    informatn_item = result.detection_items[1]
-    assert isinstance(informatn_item, SigmaDetectionItem)
-    assert informatn_item.field == "INFORMATN"
-    assert informatn_item.value[0] == SigmaString("UNKNOWN (0x123)")
+    assert isinstance(result, SigmaDetectionItem)
+    assert result.field == "INFORMATN"
+    assert result.value[0] == SigmaString("UNKNOWN (0x123)")
