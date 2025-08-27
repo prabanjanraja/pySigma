@@ -63,15 +63,23 @@ class TargetObjectTransformation(DetectionItemTransformation):
         elif SigmaEndswithModifier in modifiers:
             if "\\" in s_value:
                 name_part, value_part = s_value.rsplit("\\", 1)
-                transformed_detection = SigmaDetection(
-                    detection_items=[
-                        SigmaDetectionItem(
-                            "ObjectName", [SigmaEndswithModifier], value=[SigmaString(name_part)]
-                        ),
-                        SigmaDetectionItem("OBJECTVALUENAME", [], value=[SigmaString(value_part)]),
-                    ],
-                    item_linking=ConditionAND,
-                )
+                if name_part:
+                    transformed_detection = SigmaDetection(
+                        detection_items=[
+                            SigmaDetectionItem(
+                                "ObjectName", [SigmaEndswithModifier], value=[SigmaString(name_part)]
+                            ),
+                            SigmaDetectionItem("OBJECTVALUENAME", [], value=[SigmaString(value_part)]),
+                        ],
+                        item_linking=ConditionAND,
+                    )
+                else:
+                    transformed_detection = SigmaDetection(
+                        detection_items=[
+                            SigmaDetectionItem("OBJECTVALUENAME", [], value=[SigmaString(value_part)]),
+                        ],
+                        item_linking=ConditionAND,
+                    )
             else:
                 transformed_detection = SigmaDetectionItem(
                     "OBJECTVALUENAME", [SigmaEndswithModifier], value=[SigmaString(s_value)]
@@ -84,11 +92,6 @@ class TargetObjectTransformation(DetectionItemTransformation):
                 # ObjectName|contains: 'foo\bar' OR (ObjectName|endswith: 'foo' AND OBJECTVALUENAME|startswith: 'bar')
                 transformed_detection = SigmaDetection(
                     detection_items=[
-                        SigmaDetectionItem(
-                            "ObjectName", [SigmaContainsModifier], value=[SigmaString(s_value)]
-                        ),
-                        SigmaDetection(
-                            detection_items=[
                                 SigmaDetectionItem(
                                     "ObjectName",
                                     [SigmaEndswithModifier],
@@ -101,9 +104,6 @@ class TargetObjectTransformation(DetectionItemTransformation):
                                 ),
                             ],
                             item_linking=ConditionAND,
-                        ),
-                    ],
-                    item_linking=ConditionOR,
                 )
             else:
                 # ObjectName|contains: 'value' OR OBJECTVALUENAME|contains: 'value'
@@ -130,26 +130,6 @@ class TargetObjectTransformation(DetectionItemTransformation):
 
         return detection_item
 
-
-class DuplicateINFORMATIONnameTransformation(DetectionItemTransformation):
-    """
-    Duplicates the INFORMATIONname field into an ObjectName field.
-    """
-
-    def apply_detection_item(self, detection_item: SigmaDetectionItem) -> SigmaDetectionItem:
-        if detection_item.field == "INFORMATIONname" or detection_item.field == "FileName":
-            return SigmaDetection(
-                detection_items=[
-                    detection_item,
-                    SigmaDetectionItem(
-                        "ObjectName",
-                        detection_item.modifiers,
-                        value=detection_item.value,
-                    ),
-                ],
-                item_linking=ConditionOR,
-            )
-        return detection_item
 
 class DuplicateChangeTransformation(DetectionItemTransformation):
     """
@@ -246,7 +226,7 @@ class DuplicateTargetFilenameTransformation(DetectionItemTransformation):
     """
 
     def apply_detection_item(self, detection_item: SigmaDetectionItem) -> SigmaDetectionItem:
-        if detection_item.field == "TargetFilename":
+        if detection_item.field == "TargetFilename"  or detection_item.field == "FileName":
             return SigmaDetection(
                 detection_items=[
                     detection_item,
