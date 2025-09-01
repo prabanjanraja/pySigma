@@ -217,7 +217,7 @@ class DuplicateChangeTransformation(DetectionItemTransformation):
             Details: ['DWORD (0x00000001)', 'DWORD (0x00000002)']
         Output:
             (
-                INFORMATN: ['DWORD (0x00000001)', 'DWORD (0x00000002)'] OR
+                INFORMATION: ['DWORD (0x00000001)', 'DWORD (0x00000002)'] OR
                 (CHANGES: [1, 2] AND NEWTYPE: ['REG_DWORD', 'REG_DWORD'])
             )
     """
@@ -233,7 +233,7 @@ class DuplicateChangeTransformation(DetectionItemTransformation):
 
         changes_values = []
         newtype_values = []
-        informatn_values = []
+        INFORMATION_values = []
         can_transform_all = True
 
         type_mapping = {
@@ -272,17 +272,17 @@ class DuplicateChangeTransformation(DetectionItemTransformation):
 
             changes_values.append(SigmaNumber(dec_value))
             newtype_values.append(SigmaString(new_type))
-            informatn_values.append(v)
+            INFORMATION_values.append(v)
 
         if not can_transform_all or not changes_values:
             return SigmaDetectionItem(
-                "INFORMATN", detection_item.modifiers, value=detection_item.value
+                "INFORMATION", detection_item.modifiers, value=detection_item.value
             )
 
         return SigmaDetection(
             detection_items=[
                 SigmaDetectionItem(
-                    "INFORMATN", detection_item.modifiers, value=informatn_values
+                    "INFORMATION", detection_item.modifiers, value=INFORMATION_values
                 ),
                 SigmaDetection(
                     detection_items=[
