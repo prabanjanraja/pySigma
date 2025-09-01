@@ -128,7 +128,6 @@ class SiemBackend(TextQueryBackend):
             "GT": "LTE", "GTE": "LT",
             "LT": "GTE", "LTE": "GT",
             "MATCHES": "NMATCHES", "NMATCHES": "MATCHES",
-            "IN": "NIN", "NIN": "IN",
         }
 
     def add_row(self, field: str, operator: str, value: Any, value_type: str, logic: str = "AND") -> int:
@@ -183,9 +182,9 @@ class SiemBackend(TextQueryBackend):
         if not values:
             return self.convert_condition_or(cond, state)
 
-        # Determine the operator and value format (list for IN, string for others)
+        # Determine the operator and value format (list for EQ, string for others)
         if operator == "EQ":
-            final_operator = "IN"
+            final_operator = "EQ"
             final_value = values
         else:
             final_operator = operator

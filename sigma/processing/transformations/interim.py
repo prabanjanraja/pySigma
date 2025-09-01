@@ -19,114 +19,171 @@ class TargetObjectTransformation(DetectionItemTransformation):
         if detection_item.field != "TargetObject":
             return detection_item
 
-        if not detection_item.value or not isinstance(detection_item.value[0], SigmaString):
+        if not detection_item.value:
             return detection_item
 
-        s_value = str(detection_item.value[0])
+        # Ensure we have a list of values to work with
+        if not isinstance(detection_item.value, list):
+            values = [detection_item.value]
+        else:
+            values = detection_item.value
+
+        # Filter for SigmaString values only
+        string_values = [v for v in values if isinstance(v, SigmaString)]
+        if not string_values:
+            return detection_item
+
         modifiers = detection_item.modifiers
 
-        transformed_detection = None
+        # Collect values by transformation type to reduce redundancy
+        object_names = []
+        object_values = []
+        object_name_startswith = []
+        object_value_startswith = []
+        object_name_endswith = []
+        object_value_endswith = []
+        object_name_contains = []
+        object_value_contains = []
+        compound_contains = []  # For values with backslash using endswith/startswith pattern
 
-        # Equals (no modifier)
-        if not modifiers:
-            if "\\" in s_value:
+        for sigma_string in string_values:
+            s_value = str(sigma_string)
+
+            # Equals (no modifier)
+            if not modifiers:
                 object_name, object_value = s_value.rsplit("\\", 1)
-                transformed_detection = SigmaDetection(
-                    detection_items=[
-                        SigmaDetectionItem("ObjectName", [], value=[SigmaString(object_name)]),
-                        SigmaDetectionItem("OBJECTVALUENAME", [], value=[SigmaString(object_value)]),
-                    ],
-                    item_linking=ConditionAND,
-                )
+                if object_name != '*':  # Only add if name_part is not '*'
+                    object_names.append(SigmaString(object_name))
+                    object_values.append(SigmaString(object_value))
 
-        # StartsWith
-        elif SigmaStartswithModifier in modifiers:
-            if "\\" in s_value:
+            # StartsWith
+            elif SigmaStartswithModifier in modifiers:
                 name_part, value_part = s_value.rsplit("\\", 1)
-                transformed_detection = SigmaDetection(
-                    detection_items=[
-                        SigmaDetectionItem("ObjectName", [], value=[SigmaString(name_part)]),
-                        SigmaDetectionItem(
-                            "OBJECTVALUENAME",
-                            [SigmaStartswithModifier],
-                            value=[SigmaString(value_part)],
-                        ),
-                    ],
-                    item_linking=ConditionAND,
-                )
-            else:
-                transformed_detection = SigmaDetectionItem(
-                    "ObjectName", [SigmaStartswithModifier], value=[SigmaString(s_value)]
-                )
-
-        # EndsWith
-        elif SigmaEndswithModifier in modifiers:
-            if "\\" in s_value:
-                name_part, value_part = s_value.rsplit("\\", 1)
-                if name_part:
-                    transformed_detection = SigmaDetection(
-                        detection_items=[
-                            SigmaDetectionItem(
-                                "ObjectName", [SigmaEndswithModifier], value=[SigmaString(name_part)]
-                            ),
-                            SigmaDetectionItem("OBJECTVALUENAME", [], value=[SigmaString(value_part)]),
-                        ],
-                        item_linking=ConditionAND,
-                    )
+                if name_part != '*':  # Only split if name_part is not '*'
+                    object_names.append(SigmaString(name_part))
+                    object_value_startswith.append(SigmaString(value_part))
                 else:
-                    transformed_detection = SigmaDetection(
-                        detection_items=[
-                            SigmaDetectionItem("OBJECTVALUENAME", [], value=[SigmaString(value_part)]),
-                        ],
-                        item_linking=ConditionAND,
-                    )
-            else:
-                transformed_detection = SigmaDetectionItem(
-                    "OBJECTVALUENAME", [SigmaEndswithModifier], value=[SigmaString(s_value)]
-                )
+                    object_name_startswith.append(SigmaString(s_value))
 
-        # Contains
-        elif SigmaContainsModifier in modifiers:
-            if "\\" in s_value:
+            # EndsWith
+            elif SigmaEndswithModifier in modifiers:
                 name_part, value_part = s_value.rsplit("\\", 1)
-                # ObjectName|contains: 'foo\bar' OR (ObjectName|endswith: 'foo' AND OBJECTVALUENAME|startswith: 'bar')
-                transformed_detection = SigmaDetection(
-                    detection_items=[
-                                SigmaDetectionItem(
-                                    "ObjectName",
-                                    [SigmaEndswithModifier],
-                                    value=[SigmaString(name_part)],
-                                ),
-                                SigmaDetectionItem(
-                                    "OBJECTVALUENAME",
-                                    [SigmaStartswithModifier],
-                                    value=[SigmaString(value_part)],
-                                ),
-                            ],
-                            item_linking=ConditionAND,
-                )
+                if name_part != '*':  # Only split if name_part is not '*'
+                    object_name_endswith.append(SigmaString(name_part))
+                    object_values.append(SigmaString(value_part))
+                else:
+                    object_value_endswith.append(SigmaString(value_part))
+
+            # Contains
+            elif SigmaContainsModifier in modifiers:
+                name_part, value_part = s_value.rsplit("\\", 1)
+                if name_part != '*':  # Only create compound if name_part is not '*'
+                    compound_contains.append((SigmaString(name_part), SigmaString(value_part)))
+                else:
+                    object_name_contains.append(SigmaString(s_value))
+                    object_value_contains.append(SigmaString(s_value))
+
+        # Build consolidated transformations
+        transformed_items = []
+
+        # Add consolidated object names and values
+        if object_names:
+            transformed_items.append(SigmaDetectionItem("ObjectName", [], value=object_names))
+        if object_values:
+            transformed_items.append(SigmaDetectionItem("OBJECTVALUENAME", [], value=object_values))
+        if object_name_startswith:
+            transformed_items.append(SigmaDetectionItem("ObjectName", [SigmaStartswithModifier], value=object_name_startswith))
+        if object_value_startswith:
+            transformed_items.append(SigmaDetectionItem("OBJECTVALUENAME", [SigmaStartswithModifier], value=object_value_startswith))
+        if object_name_endswith:
+            transformed_items.append(SigmaDetectionItem("ObjectName", [SigmaEndswithModifier], value=object_name_endswith))
+        if object_value_endswith:
+            transformed_items.append(SigmaDetectionItem("OBJECTVALUENAME", [SigmaEndswithModifier], value=object_value_endswith))
+        if object_name_contains:
+            transformed_items.append(SigmaDetectionItem("ObjectName", [SigmaContainsModifier], value=object_name_contains))
+        if object_value_contains:
+            transformed_items.append(SigmaDetectionItem("OBJECTVALUENAME", [SigmaContainsModifier], value=object_value_contains))
+
+        # Handle compound contains transformations (backslash values)
+        compound_transformations = []
+        for name_part, value_part in compound_contains:
+            compound_transformations.append(SigmaDetection(
+                detection_items=[
+                    SigmaDetectionItem("ObjectName", [SigmaEndswithModifier], value=[name_part]),
+                    SigmaDetectionItem("OBJECTVALUENAME", [SigmaStartswithModifier], value=[value_part]),
+                ],
+                item_linking=ConditionAND,
+            ))
+
+        # Combine all transformations
+        all_transformations = []
+        
+        # For equals, startswith, and endswith: combine ObjectName and OBJECTVALUENAME with AND
+        if (object_names or object_name_startswith or object_name_endswith) and \
+           (object_values or object_value_startswith or object_value_endswith):
+            name_items = []
+            value_items = []
+            
+            if object_names:
+                name_items.append(SigmaDetectionItem("ObjectName", [], value=object_names))
+            if object_name_startswith:
+                name_items.append(SigmaDetectionItem("ObjectName", [SigmaStartswithModifier], value=object_name_startswith))
+            if object_name_endswith:
+                name_items.append(SigmaDetectionItem("ObjectName", [SigmaEndswithModifier], value=object_name_endswith))
+            
+            if object_values:
+                value_items.append(SigmaDetectionItem("OBJECTVALUENAME", [], value=object_values))
+            if object_value_startswith:
+                value_items.append(SigmaDetectionItem("OBJECTVALUENAME", [SigmaStartswithModifier], value=object_value_startswith))
+            if object_value_endswith:
+                value_items.append(SigmaDetectionItem("OBJECTVALUENAME", [SigmaEndswithModifier], value=object_value_endswith))
+
+            # Combine name items with OR, value items with OR, then combine both with AND
+            combined_items = []
+            if len(name_items) == 1:
+                combined_items.append(name_items[0])
+            elif len(name_items) > 1:
+                combined_items.append(SigmaDetection(detection_items=name_items, item_linking=ConditionOR))
+            
+            if len(value_items) == 1:
+                combined_items.append(value_items[0])
+            elif len(value_items) > 1:
+                combined_items.append(SigmaDetection(detection_items=value_items, item_linking=ConditionOR))
+
+            all_transformations.append(SigmaDetection(detection_items=combined_items, item_linking=ConditionAND))
+
+        # For contains without backslash: combine ObjectName and OBJECTVALUENAME with OR
+        contains_items = []
+        if object_name_contains:
+            contains_items.append(SigmaDetectionItem("ObjectName", [SigmaContainsModifier], value=object_name_contains))
+        if object_value_contains:
+            contains_items.append(SigmaDetectionItem("OBJECTVALUENAME", [SigmaContainsModifier], value=object_value_contains))
+        
+        if contains_items:
+            if len(contains_items) == 1:
+                all_transformations.append(contains_items[0])
             else:
-                # ObjectName|contains: 'value' OR OBJECTVALUENAME|contains: 'value'
-                transformed_detection = SigmaDetection(
-                    detection_items=[
-                        SigmaDetectionItem(
-                            "ObjectName", [SigmaContainsModifier], value=[SigmaString(s_value)]
-                        ),
-                        SigmaDetectionItem(
-                            "OBJECTVALUENAME", [SigmaContainsModifier], value=[SigmaString(s_value)]
-                        ),
-                    ],
+                all_transformations.append(SigmaDetection(detection_items=contains_items, item_linking=ConditionOR))
+
+        # Add compound contains transformations
+        all_transformations.extend(compound_transformations)
+
+        # Return final result
+        if all_transformations:
+            if len(all_transformations) == 1:
+                return SigmaDetection(
+                    detection_items=[detection_item, all_transformations[0]],
                     item_linking=ConditionOR,
                 )
-
-        if transformed_detection:
-            return SigmaDetection(
-                detection_items=[
-                    detection_item,
-                    transformed_detection,
-                ],
-                item_linking=ConditionOR,
-            )
+            else:
+                combined_transformations = SigmaDetection(
+                    detection_items=all_transformations,
+                    item_linking=ConditionOR,
+                )
+                return SigmaDetection(
+                    detection_items=[detection_item, combined_transformations],
+                    item_linking=ConditionOR,
+                )
 
         return detection_item
 
