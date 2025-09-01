@@ -15,6 +15,20 @@ class TargetObjectTransformation(DetectionItemTransformation):
     handling various modifiers.
     """
 
+    REGISTRY_PATH_MAPPING = {
+        "HKEY_LOCAL_MACHINE": "HKLM",
+        "\\REGISTRY\\MACHINE": "HKLM",
+        "HKEY_USERS": "HKU",
+        "\\REGISTRY\\USER": "HKU",
+        "HKEY_CLASSES_ROOT": "HKCR",
+        "HKEY_CURRENT_USER": "HKCU",
+    }
+
+    def _normalize_registry_path(self, path: str) -> str:
+        for key, value in self.REGISTRY_PATH_MAPPING.items():
+            path = path.replace(key, value)
+        return path
+
     def apply_detection_item(self, detection_item: SigmaDetectionItem) -> SigmaDetectionItem:
         if detection_item.field != "TargetObject":
             return detection_item
@@ -47,41 +61,46 @@ class TargetObjectTransformation(DetectionItemTransformation):
         compound_contains = []  # For values with backslash using endswith/startswith pattern
 
         for sigma_string in string_values:
-            s_value = str(sigma_string)
+            s_value = self._normalize_registry_path(str(sigma_string))
+
+            # Improved splitting logic
+            if s_value.endswith("\\(Default)"):
+                name_part, value_part = s_value[:-10], "(Default)"
+            elif "\\" in s_value:
+                name_part, value_part = s_value.rsplit("\\", 1)
+            else:
+                name_part, value_part = s_value, None
 
             # Equals (no modifier)
             if not modifiers:
-                object_name, object_value = s_value.rsplit("\\", 1)
-                if object_name != '*':  # Only add if name_part is not '*'
-                    object_names.append(SigmaString(object_name))
-                    object_values.append(SigmaString(object_value))
+                if name_part and value_part:
+                    object_names.append(SigmaString(name_part))
+                    object_values.append(SigmaString(value_part))
 
             # StartsWith
             elif SigmaStartswithModifier in modifiers:
-                name_part, value_part = s_value.rsplit("\\", 1)
-                if name_part != '*':  # Only split if name_part is not '*'
+                if name_part and value_part:
                     object_names.append(SigmaString(name_part))
                     object_value_startswith.append(SigmaString(value_part))
                 else:
-                    object_name_startswith.append(SigmaString(s_value))
+                    object_name_startswith.append(SigmaString(name_part))
 
             # EndsWith
             elif SigmaEndswithModifier in modifiers:
-                name_part, value_part = s_value.rsplit("\\", 1)
-                if name_part != '*':  # Only split if name_part is not '*'
+                if name_part and value_part:
                     object_name_endswith.append(SigmaString(name_part))
                     object_values.append(SigmaString(value_part))
                 else:
-                    object_value_endswith.append(SigmaString(value_part))
+                    object_name_endswith.append(SigmaString(name_part))
 
             # Contains
             elif SigmaContainsModifier in modifiers:
-                name_part, value_part = s_value.rsplit("\\", 1)
-                if name_part != '*':  # Only create compound if name_part is not '*'
-                    compound_contains.append((SigmaString(name_part), SigmaString(value_part)))
+                if name_part and value_part:
+                    compound_contains.append(
+                        (SigmaString(name_part), SigmaString(value_part))
+                    )
                 else:
-                    object_name_contains.append(SigmaString(s_value))
-                    object_value_contains.append(SigmaString(s_value))
+                    object_name_contains.append(SigmaString(name_part))
 
         # Build consolidated transformations
         transformed_items = []

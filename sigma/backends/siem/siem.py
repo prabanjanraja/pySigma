@@ -121,8 +121,12 @@ class SiemBackend(TextQueryBackend):
         super().__init__(processing_pipeline, collect_errors, **kwargs)
         self.rows = []
         self.negation_mapping = {
-            "EQ": "NEQ", "NEQ": "EQ",
-            "CONT": "NCONT", "NCONT": "CONT",
+            "EQ": "NEQ",
+            "NEQ": "EQ",
+            "IN": "NIN",
+            "NIN": "IN",
+            "CONT": "NCONT",
+            "NCONT": "CONT",
             "SW": "NSW", "NSW": "SW",
             "EW": "NEW", "NEW": "EW",
             "GT": "LTE", "GTE": "LT",
