@@ -87,10 +87,7 @@ class TargetObjectTransformation(DetectionItemTransformation):
 
             # EndsWith
             elif SigmaEndswithModifier in modifiers:
-                if name_part and value_part:
-                    object_name_endswith.append(SigmaString(name_part))
-                    object_values.append(SigmaString(value_part))
-                else:
+                if name_part:
                     object_name_endswith.append(SigmaString(name_part))
 
             # Contains
@@ -189,20 +186,34 @@ class TargetObjectTransformation(DetectionItemTransformation):
 
         # Return final result
         if all_transformations:
-            if len(all_transformations) == 1:
-                return SigmaDetection(
-                    detection_items=[detection_item, all_transformations[0]],
-                    item_linking=ConditionOR,
-                )
-            else:
-                combined_transformations = SigmaDetection(
-                    detection_items=all_transformations,
-                    item_linking=ConditionOR,
-                )
-                return SigmaDetection(
-                    detection_items=[detection_item, combined_transformations],
-                    item_linking=ConditionOR,
-                )
+            # Original detection with HOSTTYPE: Sysmon
+            original_detection = SigmaDetection(
+                detection_items=[
+                    detection_item,
+                    SigmaDetectionItem("HOSTTYPE", [], value=[SigmaString("Sysmon")]),
+                ],
+                item_linking=ConditionAND,
+            )
+
+            # New field with HOSTTYPE: windows
+            new_field_detection = SigmaDetection(
+                detection_items=[
+                    SigmaDetection(
+                        detection_items=all_transformations,
+                        item_linking=ConditionOR,
+                    ),
+                    SigmaDetectionItem("HOSTTYPE", [], value=[SigmaString("windows")]),
+                ],
+                item_linking=ConditionAND,
+            )
+
+            return SigmaDetection(
+                detection_items=[
+                    original_detection,
+                    new_field_detection,
+                ],
+                item_linking=ConditionOR,
+            )
 
         return detection_item
 
@@ -275,15 +286,32 @@ class DuplicateChangeTransformation(DetectionItemTransformation):
             INFORMATION_values.append(v)
 
         if not can_transform_all or not changes_values:
-            return SigmaDetectionItem(
-                "INFORMATION", detection_item.modifiers, value=detection_item.value
+            # Original detection with HOSTTYPE: Sysmon
+            original_detection = SigmaDetection(
+                detection_items=[
+                    SigmaDetectionItem(
+                        "INFORMATION", detection_item.modifiers, value=detection_item.value
+                    ),
+                    SigmaDetectionItem("HOSTTYPE", [], value=[SigmaString("Sysmon")]),
+                ],
+                item_linking=ConditionAND,
             )
+            return original_detection
 
-        return SigmaDetection(
+        # Original field with HOSTTYPE: Sysmon
+        original_field_detection = SigmaDetection(
             detection_items=[
                 SigmaDetectionItem(
                     "INFORMATION", detection_item.modifiers, value=INFORMATION_values
                 ),
+                SigmaDetectionItem("HOSTTYPE", [], value=[SigmaString("Sysmon")]),
+            ],
+            item_linking=ConditionAND,
+        )
+
+        # New field with HOSTTYPE: windows
+        new_field_detection = SigmaDetection(
+            detection_items=[
                 SigmaDetection(
                     detection_items=[
                         SigmaDetectionItem("CHANGES", [], value=changes_values),
@@ -291,6 +319,15 @@ class DuplicateChangeTransformation(DetectionItemTransformation):
                     ],
                     item_linking=ConditionAND,
                 ),
+                SigmaDetectionItem("HOSTTYPE", [], value=[SigmaString("windows")]),
+            ],
+            item_linking=ConditionAND,
+        )
+
+        return SigmaDetection(
+            detection_items=[
+                original_field_detection,
+                new_field_detection,
             ],
             item_linking=ConditionOR,
         )
@@ -302,15 +339,33 @@ class DuplicateTargetFilenameTransformation(DetectionItemTransformation):
     """
 
     def apply_detection_item(self, detection_item: SigmaDetectionItem) -> SigmaDetectionItem:
-        if detection_item.field == "TargetFilename"  or detection_item.field == "FileName":
-            return SigmaDetection(
+        if detection_item.field == "TargetFilename" or detection_item.field == "FileName":
+            # Original detection with HOSTTYPE: Sysmon
+            original_detection = SigmaDetection(
                 detection_items=[
                     detection_item,
+                    SigmaDetectionItem("HOSTTYPE", [], value=[SigmaString("Sysmon")]),
+                ],
+                item_linking=ConditionAND,
+            )
+
+            # New field with HOSTTYPE: windows
+            new_field_detection = SigmaDetection(
+                detection_items=[
                     SigmaDetectionItem(
                         "ObjectName",
                         detection_item.modifiers,
                         value=detection_item.value,
                     ),
+                    SigmaDetectionItem("HOSTTYPE", [], value=[SigmaString("windows")]),
+                ],
+                item_linking=ConditionAND,
+            )
+
+            return SigmaDetection(
+                detection_items=[
+                    original_detection,
+                    new_field_detection,
                 ],
                 item_linking=ConditionOR,
             )
