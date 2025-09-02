@@ -1,4 +1,5 @@
 import re
+from typing import Optional
 from sigma.processing.transformations.base import DetectionItemTransformation
 from sigma.rule import SigmaDetection, SigmaDetectionItem
 from sigma.conditions import ConditionAND, ConditionOR
@@ -14,6 +15,10 @@ class TargetObjectTransformation(DetectionItemTransformation):
     Transforms a TargetObject field into a combination of ObjectName and OBJECTVALUENAME,
     handling various modifiers.
     """
+
+    def __init__(self, add_hosttype_condition: Optional[str] = None, hosttype_field: str = "HOSTTYPE"):
+        self.add_hosttype_condition = add_hosttype_condition
+        self.hosttype_field = hosttype_field
 
     REGISTRY_PATH_MAPPING = {
         "HKEY_LOCAL_MACHINE": "HKLM",
@@ -190,7 +195,7 @@ class TargetObjectTransformation(DetectionItemTransformation):
         # Return final result
         if all_transformations:
             if len(all_transformations) == 1:
-                return SigmaDetection(
+                result = SigmaDetection(
                     detection_items=[detection_item, all_transformations[0]],
                     item_linking=ConditionOR,
                 )
@@ -199,10 +204,20 @@ class TargetObjectTransformation(DetectionItemTransformation):
                     detection_items=all_transformations,
                     item_linking=ConditionOR,
                 )
-                return SigmaDetection(
+                result = SigmaDetection(
                     detection_items=[detection_item, combined_transformations],
                     item_linking=ConditionOR,
                 )
+
+            if self.add_hosttype_condition:
+                return SigmaDetection(
+                    detection_items=[
+                        result,
+                        SigmaDetectionItem(field=self.hosttype_field, modifiers=[], value=[SigmaString(self.add_hosttype_condition)])
+                    ],
+                    item_linking=ConditionAND
+                )
+            return result
 
         return detection_item
 
@@ -221,6 +236,10 @@ class DuplicateChangeTransformation(DetectionItemTransformation):
                 (CHANGES: [1, 2] AND NEWTYPE: ['REG_DWORD', 'REG_DWORD'])
             )
     """
+
+    def __init__(self, add_hosttype_condition: Optional[str] = None, hosttype_field: str = "HOSTTYPE"):
+        self.add_hosttype_condition = add_hosttype_condition
+        self.hosttype_field = hosttype_field
 
     def apply_detection_item(self, detection_item: SigmaDetectionItem) -> SigmaDetectionItem:
         if detection_item.field != "Details":
@@ -275,25 +294,35 @@ class DuplicateChangeTransformation(DetectionItemTransformation):
             INFORMATION_values.append(v)
 
         if not can_transform_all or not changes_values:
-            return SigmaDetectionItem(
+            result = SigmaDetectionItem(
                 "INFORMATION", detection_item.modifiers, value=detection_item.value
             )
+        else:
+            result = SigmaDetection(
+                detection_items=[
+                    SigmaDetectionItem(
+                        "INFORMATION", detection_item.modifiers, value=INFORMATION_values
+                    ),
+                    SigmaDetection(
+                        detection_items=[
+                            SigmaDetectionItem("CHANGES", [], value=changes_values),
+                            SigmaDetectionItem("NEWTYPE", [], value=newtype_values),
+                        ],
+                        item_linking=ConditionAND,
+                    ),
+                ],
+                item_linking=ConditionOR,
+            )
 
-        return SigmaDetection(
-            detection_items=[
-                SigmaDetectionItem(
-                    "INFORMATION", detection_item.modifiers, value=INFORMATION_values
-                ),
-                SigmaDetection(
-                    detection_items=[
-                        SigmaDetectionItem("CHANGES", [], value=changes_values),
-                        SigmaDetectionItem("NEWTYPE", [], value=newtype_values),
-                    ],
-                    item_linking=ConditionAND,
-                ),
-            ],
-            item_linking=ConditionOR,
-        )
+        if self.add_hosttype_condition and isinstance(result, SigmaDetection):
+            return SigmaDetection(
+                detection_items=[
+                    result,
+                    SigmaDetectionItem(field=self.hosttype_field, modifiers=[], value=[SigmaString(self.add_hosttype_condition)])
+                ],
+                item_linking=ConditionAND
+            )
+        return result
 
 
 class DuplicateTargetFilenameTransformation(DetectionItemTransformation):
@@ -301,9 +330,13 @@ class DuplicateTargetFilenameTransformation(DetectionItemTransformation):
     Duplicates the TargetFilename field into an ObjectName field.
     """
 
+    def __init__(self, add_hosttype_condition: Optional[str] = None, hosttype_field: str = "HOSTTYPE"):
+        self.add_hosttype_condition = add_hosttype_condition
+        self.hosttype_field = hosttype_field
+
     def apply_detection_item(self, detection_item: SigmaDetectionItem) -> SigmaDetectionItem:
         if detection_item.field == "TargetFilename"  or detection_item.field == "FileName":
-            return SigmaDetection(
+            result = SigmaDetection(
                 detection_items=[
                     detection_item,
                     SigmaDetectionItem(
@@ -314,4 +347,13 @@ class DuplicateTargetFilenameTransformation(DetectionItemTransformation):
                 ],
                 item_linking=ConditionOR,
             )
+            if self.add_hosttype_condition:
+                return SigmaDetection(
+                    detection_items=[
+                        result,
+                        SigmaDetectionItem(field=self.hosttype_field, modifiers=[], value=[SigmaString(self.add_hosttype_condition)])
+                    ],
+                    item_linking=ConditionAND
+                )
+            return result
         return detection_item

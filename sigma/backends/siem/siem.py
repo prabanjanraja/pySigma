@@ -17,6 +17,7 @@ from sigma.processing.pipeline import ProcessingPipeline, ProcessingItem
 from sigma.processing.transformations import FieldMappingTransformation, DropDetectionItemTransformation
 from sigma.processing.conditions import IncludeFieldCondition
 from sigma.processing.conditions.custom import LogsourceCategoryStartsWithCondition
+from sigma.processing.conditions.rule import LogsourceCondition
 from sigma.processing.transformations import FieldMappingTransformation
 from sigma.processing.transformations.interim import DuplicateChangeTransformation, TargetObjectTransformation, DuplicateTargetFilenameTransformation
 from sigma.types import (
@@ -68,29 +69,62 @@ class SiemBackend(TextQueryBackend):
 
     backend_processing_pipeline: ClassVar[ProcessingPipeline] = ProcessingPipeline(
         items=[
+            # TargetObjectTransformation for sysmon
             ProcessingItem(
                 transformation=TargetObjectTransformation(),
                 field_name_conditions=[
                     IncludeFieldCondition(fields=["TargetObject"])
                 ],
                 rule_conditions=[
-                    LogsourceCategoryStartsWithCondition(prefix="registry")
+                    LogsourceCategoryStartsWithCondition(prefix="registry"),
+                    LogsourceCondition(product="sysmon"),
+                ]
+            ),
+            # TargetObjectTransformation for windows
+            ProcessingItem(
+                transformation=TargetObjectTransformation(add_hosttype_condition="windows"),
+                field_name_conditions=[
+                    IncludeFieldCondition(fields=["TargetObject"])
+                ],
+                rule_conditions=[
+                    LogsourceCategoryStartsWithCondition(prefix="registry"),
+                    LogsourceCondition(product="windows"),
                 ]
             ),
             ProcessingItem(
                 transformation=DropDetectionItemTransformation(),
                 field_name_conditions=[IncludeFieldCondition(fields=["EventID"])]
             ),
+            # DuplicateTargetFilenameTransformation for sysmon
             ProcessingItem(
                 transformation=DuplicateTargetFilenameTransformation(),
                 rule_conditions=[
-                    LogsourceCategoryStartsWithCondition(prefix="file_")
+                    LogsourceCategoryStartsWithCondition(prefix="file_"),
+                    LogsourceCondition(product="sysmon"),
                 ]
             ),
+            # DuplicateTargetFilenameTransformation for windows
+            ProcessingItem(
+                transformation=DuplicateTargetFilenameTransformation(add_hosttype_condition="windows"),
+                rule_conditions=[
+                    LogsourceCategoryStartsWithCondition(prefix="file_"),
+                    LogsourceCondition(product="windows"),
+                ]
+            ),
+            # DuplicateChangeTransformation for sysmon
             ProcessingItem(
                 transformation=DuplicateChangeTransformation(),
                 rule_conditions=[
-                    LogsourceCategoryStartsWithCondition(prefix="registry")
+                    LogsourceCategoryStartsWithCondition(prefix="registry"),
+                    LogsourceCondition(product="sysmon"),
+                ]
+            ),
+            # DuplicateChangeTransformation for windows
+            ProcessingItem(
+                transformation=DuplicateChangeTransformation(add_hosttype_condition="windows"),
+                rule_conditions=[
+                    LogsourceCategoryStartsWithCondition(prefix="registry"),
+                    LogsourceCondition(product="windows"),
                 ]
             ),
             ProcessingItem(
@@ -188,7 +222,7 @@ class SiemBackend(TextQueryBackend):
 
         # Determine the operator and value format (list for EQ, string for others)
         if operator == "EQ":
-            final_operator = "EQ"
+            final_operator = "IN"
             final_value = values
         else:
             final_operator = operator

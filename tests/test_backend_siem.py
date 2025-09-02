@@ -54,7 +54,7 @@ def test_siem_backend_target_object_transform(siem_backend):
         "actions": [
             {
                 "ACTION_UNIQUE_NAME": "PLACEHOLDER_ACTION",
-                "pattern": "1 OR (2 AND 3)",
+                "pattern": "(1 OR (2 AND 3)) AND 4",
                 "rows": [
                     {
                         "CONDI": "EQ",
@@ -76,6 +76,13 @@ def test_siem_backend_target_object_transform(siem_backend):
                         "VALUE": "TCPIP",
                         "TYPE": "TEXT",
                         "LOGIC": "AND"
+                    },
+                    {
+                        "CONDI": "EQ",
+                        "FIELD": "HOSTTYPE",
+                        "VALUE": "windows",
+                        "TYPE": "TEXT",
+                        "LOGIC": "AND"
                     }
                 ]
             }
@@ -85,7 +92,7 @@ def test_siem_backend_target_object_transform(siem_backend):
 
     # Normalize the pattern by removing parentheses around single numbers
     result_json = json.loads(result[0])
-    result_json["actions"][0]["pattern"] = result_json["actions"][0]["pattern"].replace("(1)", "1").replace("(2)", "2").replace("(3)", "3")
+    result_json["actions"][0]["pattern"] = result_json["actions"][0]["pattern"].replace("(1)", "1").replace("(2)", "2").replace("(3)", "3").replace("(4)", "4")
 
     assert result_json == expected_json
 
@@ -536,3 +543,238 @@ def test_siem_backend_ignore_eventid(siem_backend):
     }
     result = siem_backend.convert(rule)
     assert json.loads(result[0]) == expected_json
+
+def test_siem_backend_target_object_transform_sysmon(siem_backend):
+    rule = SigmaCollection.from_yaml("""
+        title: Test Rule
+        logsource:
+            category: registry_add
+            product: sysmon
+        detection:
+            selection:
+                TargetObject: 'HKLM\\System\\CurrentControlSet\\services\\TCPIP'
+            condition: selection
+    """)
+    expected_json = {
+        "actions": [
+            {
+                "ACTION_UNIQUE_NAME": "PLACEHOLDER_ACTION",
+                "pattern": "1 OR (2 AND 3)",
+                "rows": [
+                    {
+                        "CONDI": "EQ",
+                        "FIELD": "OBJECTNAME",
+                        "VALUE": "HKLM\\System\\CurrentControlSet\\services\\TCPIP",
+                        "TYPE": "TEXT",
+                        "LOGIC": "AND"
+                    },
+                    {
+                        "CONDI": "EQ",
+                        "FIELD": "OBJECTNAME",
+                        "VALUE": "HKLM\\System\\CurrentControlSet\\services",
+                        "TYPE": "TEXT",
+                        "LOGIC": "OR"
+                    },
+                    {
+                        "CONDI": "EQ",
+                        "FIELD": "OBJECTVALUENAME",
+                        "VALUE": "TCPIP",
+                        "TYPE": "TEXT",
+                        "LOGIC": "AND"
+                    }
+                ]
+            }
+        ]
+    }
+    result = siem_backend.convert(rule)
+    result_json = json.loads(result[0])
+    result_json["actions"][0]["pattern"] = result_json["actions"][0]["pattern"].replace("(1)", "1").replace("(2)", "2").replace("(3)", "3")
+    assert result_json == expected_json
+
+def test_siem_backend_duplicate_change_transform_sysmon(siem_backend):
+    rule = SigmaCollection.from_yaml("""
+        title: Test Rule
+        logsource:
+            category: registry_add
+            product: sysmon
+        detection:
+            selection:
+                Details: 'DWORD (0x00000001)'
+            condition: selection
+    """)
+    expected_json = {
+        "actions": [
+            {
+                "ACTION_UNIQUE_NAME": "PLACEHOLDER_ACTION",
+                "pattern": "1 OR (2 AND 3)",
+                "rows": [
+                    {
+                        "CONDI": "EQ",
+                        "FIELD": "INFORMATION",
+                        "VALUE": "DWORD (0x00000001)",
+                        "TYPE": "TEXT",
+                        "LOGIC": "AND"
+                    },
+                    {
+                        "CONDI": "EQ",
+                        "FIELD": "CHANGES",
+                        "VALUE": "1",
+                        "TYPE": "NUM",
+                        "LOGIC": "OR"
+                    },
+                    {
+                        "CONDI": "EQ",
+                        "FIELD": "NEWTYPE",
+                        "VALUE": "REG_DWORD",
+                        "TYPE": "TEXT",
+                        "LOGIC": "AND"
+                    }
+                ]
+            }
+        ]
+    }
+    result = siem_backend.convert(rule)
+    result_json = json.loads(result[0])
+    result_json["actions"][0]["pattern"] = result_json["actions"][0]["pattern"].replace("(1)", "1").replace("(2)", "2").replace("(3)", "3")
+    assert result_json == expected_json
+
+def test_siem_backend_duplicate_change_transform_windows(siem_backend):
+    rule = SigmaCollection.from_yaml("""
+        title: Test Rule
+        logsource:
+            category: registry_add
+            product: windows
+        detection:
+            selection:
+                Details: 'DWORD (0x00000001)'
+            condition: selection
+    """)
+    expected_json = {
+        "actions": [
+            {
+                "ACTION_UNIQUE_NAME": "PLACEHOLDER_ACTION",
+                "pattern": "(1 OR (2 AND 3)) AND 4",
+                "rows": [
+                    {
+                        "CONDI": "EQ",
+                        "FIELD": "INFORMATION",
+                        "VALUE": "DWORD (0x00000001)",
+                        "TYPE": "TEXT",
+                        "LOGIC": "AND"
+                    },
+                    {
+                        "CONDI": "EQ",
+                        "FIELD": "CHANGES",
+                        "VALUE": "1",
+                        "TYPE": "NUM",
+                        "LOGIC": "OR"
+                    },
+                    {
+                        "CONDI": "EQ",
+                        "FIELD": "NEWTYPE",
+                        "VALUE": "REG_DWORD",
+                        "TYPE": "TEXT",
+                        "LOGIC": "AND"
+                    },
+                    {
+                        "CONDI": "EQ",
+                        "FIELD": "HOSTTYPE",
+                        "VALUE": "windows",
+                        "TYPE": "TEXT",
+                        "LOGIC": "AND"
+                    }
+                ]
+            }
+        ]
+    }
+    result = siem_backend.convert(rule)
+    result_json = json.loads(result[0])
+    result_json["actions"][0]["pattern"] = result_json["actions"][0]["pattern"].replace("(1)", "1").replace("(2)", "2").replace("(3)", "3").replace("(4)", "4")
+    assert result_json == expected_json
+
+def test_siem_backend_duplicate_target_filename_transform_sysmon(siem_backend):
+    rule = SigmaCollection.from_yaml("""
+        title: Test Rule
+        logsource:
+            category: file_event
+            product: sysmon
+        detection:
+            selection:
+                TargetFilename: 'C:\\test.txt'
+            condition: selection
+    """)
+    expected_json = {
+        "actions": [
+            {
+                "ACTION_UNIQUE_NAME": "PLACEHOLDER_ACTION",
+                "pattern": "1 OR 2",
+                "rows": [
+                    {
+                        "CONDI": "EQ",
+                        "FIELD": "FILENAME",
+                        "VALUE": "C:\\test.txt",
+                        "TYPE": "TEXT",
+                        "LOGIC": "AND"
+                    },
+                    {
+                        "CONDI": "EQ",
+                        "FIELD": "OBJECTNAME",
+                        "VALUE": "C:\\test.txt",
+                        "TYPE": "TEXT",
+                        "LOGIC": "OR"
+                    }
+                ]
+            }
+        ]
+    }
+    result = siem_backend.convert(rule)
+    result_json = json.loads(result[0])
+    result_json["actions"][0]["pattern"] = result_json["actions"][0]["pattern"].replace("(1)", "1").replace("(2)", "2")
+    assert result_json == expected_json
+
+def test_siem_backend_duplicate_target_filename_transform_windows(siem_backend):
+    rule = SigmaCollection.from_yaml("""
+        title: Test Rule
+        logsource:
+            category: file_event
+            product: windows
+        detection:
+            selection:
+                TargetFilename: 'C:\\test.txt'
+            condition: selection
+    """)
+    expected_json = {
+        "actions": [
+            {
+                "ACTION_UNIQUE_NAME": "PLACEHOLDER_ACTION",
+                "pattern": "(1 OR 2) AND 3",
+                "rows": [
+                    {
+                        "CONDI": "EQ",
+                        "FIELD": "FILENAME",
+                        "VALUE": "C:\\test.txt",
+                        "TYPE": "TEXT",
+                        "LOGIC": "AND"
+                    },
+                    {
+                        "CONDI": "EQ",
+                        "FIELD": "OBJECTNAME",
+                        "VALUE": "C:\\test.txt",
+                        "TYPE": "TEXT",
+                        "LOGIC": "OR"
+                    },
+                    {
+                        "CONDI": "EQ",
+                        "FIELD": "HOSTTYPE",
+                        "VALUE": "windows",
+                        "TYPE": "TEXT",
+                        "LOGIC": "AND"
+                    }
+                ]
+            }
+        ]
+    }
+    result = siem_backend.convert(rule)
+    result_json = json.loads(result[0])
+    result_json["actions"][0]["pattern"] = result_json["actions"][0]["pattern"].replace("(1)", "1").replace("(2)", "2").replace("(3)", "3")
+    assert result_json == expected_json
