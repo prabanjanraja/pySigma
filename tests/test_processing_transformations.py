@@ -2582,7 +2582,7 @@ def test_duplicate_change_transformation(dummy_pipeline):
 
     informatn_item = result.detection_items[0]
     assert isinstance(informatn_item, SigmaDetectionItem)
-    assert informatn_item.field == "INFORMATN"
+    assert informatn_item.field == "INFORMATION"
     assert informatn_item.value == [SigmaString("DWORD (0x00000001)")]
 
     nested_detection = result.detection_items[1]
@@ -2617,7 +2617,7 @@ def test_duplicate_change_transformation_multiple_values(dummy_pipeline):
 
     informatn_item = result.detection_items[0]
     assert isinstance(informatn_item, SigmaDetectionItem)
-    assert informatn_item.field == "INFORMATN"
+    assert informatn_item.field == "INFORMATION"
     assert informatn_item.value == [
         SigmaString("DWORD (0x00000001)"),
         SigmaString("DWORD (0x00000002)"),
@@ -2649,7 +2649,7 @@ def test_duplicate_change_transformation_no_match(dummy_pipeline):
     result = transformation.apply_detection_item(detection_item)
 
     assert isinstance(result, SigmaDetectionItem)
-    assert result.field == "INFORMATN"
+    assert result.field == "INFORMATION"
     assert result.value[0] == SigmaString("some other value")
 
 
@@ -2660,5 +2660,117 @@ def test_duplicate_change_transformation_no_mapping(dummy_pipeline):
     result = transformation.apply_detection_item(detection_item)
 
     assert isinstance(result, SigmaDetectionItem)
-    assert result.field == "INFORMATN"
+    assert result.field == "INFORMATION"
     assert result.value[0] == SigmaString("UNKNOWN (0x123)")
+
+
+from sigma.processing.transformations.interim import TargetObjectTransformation
+from sigma.modifiers import (
+    SigmaContainsModifier,
+    SigmaStartswithModifier,
+    SigmaEndswithModifier,
+)
+
+@pytest.fixture
+def target_object_transformation(dummy_pipeline):
+    transformation = TargetObjectTransformation()
+    transformation.set_pipeline(dummy_pipeline)
+    return transformation
+
+class TestTargetObjectTransformation:
+    def test_target_object_equals(self, target_object_transformation):
+        detection_item = SigmaDetectionItem("TargetObject", [], [SigmaString("HKLM\\System\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces")])
+        result = target_object_transformation.apply_detection_item(detection_item)
+        assert isinstance(result, SigmaDetection)
+        assert result.item_linking == ConditionOR
+        assert len(result.detection_items) == 2
+
+        original_item = result.detection_items[0]
+        assert original_item == detection_item
+
+        transformed_item = result.detection_items[1]
+        assert isinstance(transformed_item, SigmaDetection)
+        assert transformed_item.item_linking == ConditionAND
+        assert len(transformed_item.detection_items) == 2
+        assert transformed_item.detection_items[0].field == "ObjectName"
+        assert str(transformed_item.detection_items[0].value[0]) == "HKLM\\System\\CurrentControlSet\\Services\\Tcpip\\Parameters"
+        assert transformed_item.detection_items[1].field == "OBJECTVALUENAME"
+        assert str(transformed_item.detection_items[1].value[0]) == "Interfaces"
+
+    def test_target_object_startswith(self, target_object_transformation):
+        detection_item = SigmaDetectionItem("TargetObject", [SigmaStartswithModifier], [SigmaString("HKLM\\System\\CurrentControlSet\\Services")])
+        result = target_object_transformation.apply_detection_item(detection_item)
+        assert isinstance(result, SigmaDetection)
+        assert result.item_linking == ConditionOR
+        assert len(result.detection_items) == 2
+
+        original_item = result.detection_items[0]
+        assert original_item == detection_item
+
+        transformed_item = result.detection_items[1]
+        assert isinstance(transformed_item, SigmaDetectionItem)
+        assert transformed_item.field == "ObjectName"
+        assert transformed_item.modifiers == [SigmaStartswithModifier]
+        assert str(transformed_item.value[0]) == "HKLM\\System\\CurrentControlSet\\Services*"
+
+    def test_target_object_endswith(self, target_object_transformation):
+        detection_item = SigmaDetectionItem("TargetObject", [SigmaEndswithModifier], [SigmaString("Tcpip\\Parameters\\Interfaces")])
+        result = target_object_transformation.apply_detection_item(detection_item)
+        assert isinstance(result, SigmaDetection)
+        assert result.item_linking == ConditionOR
+        assert len(result.detection_items) == 2
+
+        original_item = result.detection_items[0]
+        assert original_item == detection_item
+
+        transformed_item = result.detection_items[1]
+        assert isinstance(transformed_item, SigmaDetection)
+        assert transformed_item.item_linking == ConditionAND
+        assert len(transformed_item.detection_items) == 2
+        assert transformed_item.detection_items[0].field == "ObjectName"
+        assert transformed_item.detection_items[0].modifiers == [SigmaEndswithModifier]
+        assert str(transformed_item.detection_items[0].value[0]) == "*Tcpip\\Parameters"
+        assert transformed_item.detection_items[1].field == "OBJECTVALUENAME"
+        assert str(transformed_item.detection_items[1].value[0]) == "Interfaces"
+
+    def test_target_object_contains(self, target_object_transformation):
+        detection_item = SigmaDetectionItem("TargetObject", [SigmaContainsModifier], [SigmaString("Services\\Tcpip")])
+        result = target_object_transformation.apply_detection_item(detection_item)
+        assert isinstance(result, SigmaDetection)
+        assert result.item_linking == ConditionOR
+        assert len(result.detection_items) == 2
+
+        original_item = result.detection_items[0]
+        assert original_item == detection_item
+
+        transformed_item = result.detection_items[1]
+        assert isinstance(transformed_item, SigmaDetection)
+        assert transformed_item.item_linking == ConditionOR
+        assert len(transformed_item.detection_items) == 2
+
+        contains_object_name = transformed_item.detection_items[0]
+        assert contains_object_name.field == "ObjectName"
+        assert contains_object_name.modifiers == [SigmaContainsModifier]
+        assert str(contains_object_name.value[0]) == "*Services\\Tcpip*"
+
+        spanning_condition = transformed_item.detection_items[1]
+        assert isinstance(spanning_condition, SigmaDetection)
+        assert spanning_condition.item_linking == ConditionAND
+        assert spanning_condition.detection_items[0].field == "ObjectName"
+        assert spanning_condition.detection_items[0].modifiers == [SigmaEndswithModifier]
+        assert str(spanning_condition.detection_items[0].value[0]) == "*Services"
+        assert spanning_condition.detection_items[1].field == "OBJECTVALUENAME"
+        assert spanning_condition.detection_items[1].modifiers == [SigmaStartswithModifier]
+        assert str(spanning_condition.detection_items[1].value[0]) == "Tcpip*"
+
+    def test_target_object_default_value(self, target_object_transformation):
+        detection_item = SigmaDetectionItem("TargetObject", [], [SigmaString("HKLM\\System\\CurrentControlSet\\Services\\(Default)")])
+        result = target_object_transformation.apply_detection_item(detection_item)
+        assert isinstance(result, SigmaDetection)
+
+        transformed_item = result.detection_items[1]
+        assert isinstance(transformed_item, SigmaDetection)
+        assert transformed_item.detection_items[0].field == "ObjectName"
+        assert str(transformed_item.detection_items[0].value[0]) == "HKLM\\System\\CurrentControlSet\\Services"
+        assert transformed_item.detection_items[1].field == "OBJECTVALUENAME"
+        assert str(transformed_item.detection_items[1].value[0]) == "(Default)"
