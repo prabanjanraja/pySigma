@@ -29,6 +29,7 @@ from sigma.types import (
     SigmaFieldReference,
     SigmaQueryExpression,
     SigmaExpansion,
+    CompareOperators,
 )
 from sigma.rule import SigmaRule
 
@@ -138,9 +139,32 @@ class SiemBackend(TextQueryBackend):
         """Adds a row to the criteria and returns its index."""
         row_index = len(self.rows) + 1
 
-        if (operator in ("CONT", "NCONT")) and value == "":
-            operator = "EXISTS" if operator == "CONT" else "NOT_EXISTS"
-            value = None
+        # Handle SigmaNumber instances
+        if isinstance(value, SigmaNumber):
+            value = value.number
+        elif isinstance(value, list):
+            value = [v.number if isinstance(v, SigmaNumber) else v for v in value]
+
+        # Handle empty values by converting to EXISTS/NOT_EXISTS
+        if operator in ("CONT", "NCONT"):
+            if isinstance(value, list):
+                if all(v == "" for v in value if isinstance(v, str)):
+                    operator = "EXISTS" if operator == "CONT" else "NOT_EXISTS"
+                    value = None
+            elif isinstance(value, str) and value == "":
+                operator = "EXISTS" if operator == "CONT" else "NOT_EXISTS"
+                value = None
+        elif operator == "EQ":
+            if isinstance(value, list):
+                if all(v == "" for v in value if isinstance(v, str)):
+                    operator = "EXISTS"
+                    value = None
+                elif len(value) == 1 and isinstance(value[0], str) and value[0] == "":
+                    operator = "EXISTS"
+                    value = None
+            elif isinstance(value, str) and value == "":
+                operator = "EXISTS"
+                value = None
 
         row = {
             "CONDI": operator,
@@ -262,7 +286,14 @@ class SiemBackend(TextQueryBackend):
     def convert_condition_field_compare_op_val(
         self, cond: ConditionFieldEqualsValueExpression, state: ConversionState
     ) -> str:
-        op = self.compare_operators[cond.value.op]
+        op_map = {
+            CompareOperators.LT: "LT",
+            CompareOperators.LTE: "LTE",
+            CompareOperators.GT: "GT",
+            CompareOperators.GTE: "GTE",
+            CompareOperators.NEQ: "NEQ",
+        }
+        op = op_map[cond.value.op]
         if getattr(state, "negated", False):
             op = self.negation_mapping.get(op, "N" + op)
         row_index = self.add_row(cond.field, op, cond.value.number, "NUM")

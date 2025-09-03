@@ -16,12 +16,16 @@ class TargetObjectTransformation(DetectionItemTransformation):
     """
 
     REGISTRY_PATH_MAPPING = {
-        "HKEY_LOCAL_MACHINE": "HKLM",
-        "\\REGISTRY\\MACHINE": "HKLM",
-        "HKEY_USERS": "HKU",
-        "\\REGISTRY\\USER": "HKU",
-        "HKEY_CLASSES_ROOT": "HKCR",
-        "HKEY_CURRENT_USER": "HKCU",
+        "HKLM": "\\REGISTRY\\MACHINE",
+        "HKEY_LOCAL_MACHINE": "\\REGISTRY\\MACHINE",
+        "HKU": "\\REGISTRY\\USER",
+        "HKEY_USERS": "\\REGISTRY\\USER",
+        "HKCR": "\\REGISTRY\\MACHINE\\SOFTWARE\\Classes",
+        "HKEY_CLASSES_ROOT": "\\REGISTRY\\MACHINE\\SOFTWARE\\Classes",
+        "HKCU": "\\REGISTRY\\USER",
+        "HKEY_CURRENT_USER": "\\REGISTRY\\USER",
+        "HKCC": "\\REGISTRY\\MACHINE\\SYSTEM\\ControlSet001\\Hardware Profiles\\Current",
+        "HKEY_CURRENT_CONFIG": "\\REGISTRY\\MACHINE\\SYSTEM\\ControlSet001\\Hardware Profiles\\Current",
     }
 
     def _normalize_registry_path(self, path: str) -> str:
@@ -126,13 +130,15 @@ class TargetObjectTransformation(DetectionItemTransformation):
         # Handle compound contains transformations (backslash values)
         compound_transformations = []
         for name_part, value_part in compound_contains:
-            compound_transformations.append(SigmaDetection(
-                detection_items=[
-                    SigmaDetectionItem("ObjectName", [SigmaEndswithModifier], value=[name_part]),
-                    SigmaDetectionItem("OBJECTVALUENAME", [SigmaStartswithModifier], value=[value_part]),
-                ],
-                item_linking=ConditionAND,
-            ))
+            items = []
+            if str(name_part):  # Only add ObjectName condition if name_part is not empty
+                items.append(SigmaDetectionItem("ObjectName", [SigmaEndswithModifier], value=[name_part]))
+            items.append(SigmaDetectionItem("OBJECTVALUENAME", [SigmaStartswithModifier], value=[value_part]))
+            if items:  # Ensure at least one item
+                compound_transformations.append(SigmaDetection(
+                    detection_items=items,
+                    item_linking=ConditionAND,
+                ))
 
         # Combine all transformations
         all_transformations = []
@@ -190,10 +196,14 @@ class TargetObjectTransformation(DetectionItemTransformation):
         # Return final result
         if all_transformations:
             if len(all_transformations) == 1:
-                return SigmaDetection(
-                    detection_items=[detection_item, all_transformations[0]],
-                    item_linking=ConditionOR,
-                )
+                item = all_transformations[0]
+                if isinstance(item, SigmaDetectionItem) and item.field == "ObjectName" and SigmaContainsModifier in item.modifiers:
+                    return item
+                else:
+                    return SigmaDetection(
+                        detection_items=[detection_item, item],
+                        item_linking=ConditionOR,
+                    )
             else:
                 combined_transformations = SigmaDetection(
                     detection_items=all_transformations,
